@@ -620,9 +620,11 @@ public:
 			baseSpeed -= static_cast<uint32_t>(resetAttackSpeedBonus);
 		}
 		if (isDualWielding()) {
-			auto rate = getInteger(ConfigManager::DUAL_WIELDING_SPEED_RATE);
+			const auto rate = getInteger(ConfigManager::DUAL_WIELDING_SPEED_RATE);
 			if (rate > 0) {
-				baseSpeed = (baseSpeed * 100 + rate - 1) / rate;
+				const auto rateValue = static_cast<uint64_t>(rate);
+				baseSpeed = static_cast<uint32_t>(
+				    (static_cast<uint64_t>(baseSpeed) * 100 + rateValue - 1) / rateValue);
 			}
 		}
 		if (baseSpeed < 100) {

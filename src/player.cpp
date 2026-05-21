@@ -47,6 +47,63 @@ uint16_t clampPreyDamagePercent(uint16_t value)
 {
 	return std::min<uint16_t>(value, 100);
 }
+
+bool isDualWieldWeapon(const Item* item)
+{
+	if (!item || (item->getSlotPosition() & SLOTP_TWO_HAND)) {
+		return false;
+	}
+
+	switch (item->getWeaponType()) {
+		case WEAPON_AXE:
+		case WEAPON_SWORD:
+		case WEAPON_CLUB:
+		case WEAPON_FIST:
+			return true;
+
+		default:
+			return false;
+	}
+}
+
+int64_t getCustomAttributeInteger(const ItemAttributes::CustomAttribute* attr)
+{
+	if (!attr) {
+		return 0;
+	}
+
+	if (const auto* value = boost::get<int64_t>(&attr->value)) {
+		return *value;
+	}
+	if (const auto* value = boost::get<double>(&attr->value)) {
+		return static_cast<int64_t>(*value);
+	}
+	if (const auto* value = boost::get<bool>(&attr->value)) {
+		return *value ? 1 : 0;
+	}
+	if (const auto* value = boost::get<std::string>(&attr->value)) {
+		std::string text = boost::algorithm::trim_copy(*value);
+		if (text.empty()) {
+			return 0;
+		}
+		if (caseInsensitiveEqual(text, "true")) {
+			return 1;
+		}
+		if (caseInsensitiveEqual(text, "false")) {
+			return 0;
+		}
+
+		try {
+			size_t parsedLength = 0;
+			int64_t parsedValue = std::stoll(text, &parsedLength, 10);
+			return parsedLength == text.size() ? parsedValue : 0;
+		} catch (const std::exception&) {
+			return 0;
+		}
+	}
+
+	return 0;
+}
 } // namespace
 
 MuteCountMap Player::muteCountMap;
@@ -579,30 +636,18 @@ bool Player::isDualWielding() const
 
 	Item* leftWeapon = getWeapon(CONST_SLOT_LEFT, true);
 	Item* rightWeapon = getWeapon(CONST_SLOT_RIGHT, true);
-	if (!leftWeapon || !rightWeapon) {
+	if (!isDualWieldWeapon(leftWeapon) || !isDualWieldWeapon(rightWeapon)) {
 		return false;
 	}
 
 	if (getString(ConfigManager::DUAL_WIELDING_MODE) == "itemxml") {
 		auto* leftAttr = leftWeapon->getCustomAttribute("dualwielding");
 		auto* rightAttr = rightWeapon->getCustomAttribute("dualwielding");
-		if (!leftAttr || !rightAttr) {
-			return false;
-		}
-		int64_t leftVal = boost::get<int64_t>(leftAttr->value);
-		int64_t rightVal = boost::get<int64_t>(rightAttr->value);
+		const int64_t leftVal = getCustomAttributeInteger(leftAttr);
+		const int64_t rightVal = getCustomAttributeInteger(rightAttr);
 		if (leftVal == 0 || rightVal == 0) {
 			return false;
 		}
-	}
-
-	WeaponType_t leftType = leftWeapon->getWeaponType();
-	WeaponType_t rightType = rightWeapon->getWeaponType();
-	if (leftType == WEAPON_DISTANCE || leftType == WEAPON_WAND) {
-		return false;
-	}
-	if (rightType == WEAPON_DISTANCE || rightType == WEAPON_WAND) {
-		return false;
 	}
 
 	return true;
@@ -610,14 +655,14 @@ bool Player::isDualWielding() const
 
 int32_t Player::getDualWieldDamageBoost() const
 {
-	int32_t boost = 0;
+	int64_t boost = 0;
 
 	int64_t storageBoost = 0;
 	auto storageVal = getStorageValue(DUAL_WIELD_DAMAGE_BOOST_STORAGE);
 	if (storageVal.has_value()) {
 		storageBoost = storageVal.value();
 		if (storageBoost > 0) {
-			boost += static_cast<int32_t>(storageBoost);
+			boost += storageBoost;
 		}
 	}
 
@@ -628,20 +673,17 @@ int32_t Player::getDualWieldDamageBoost() const
 		}
 		auto* attr = item->getCustomAttribute("dualWieldDamageBoost");
 		if (attr) {
-			int64_t val = boost::get<int64_t>(attr->value);
+			const int64_t val = getCustomAttributeInteger(attr);
 			if (val > 0) {
-				boost += static_cast<int32_t>(val);
+				boost += val;
 			}
 		}
 	}
 
-	int32_t baseRate = static_cast<int32_t>(getInteger(ConfigManager::DUAL_WIELDING_DAMAGE_RATE));
-	int32_t maxBoost = 100 - baseRate;
-	if (boost > maxBoost) {
-		boost = maxBoost;
-	}
-
-	return boost;
+	const int32_t baseRate = std::clamp<int32_t>(
+	    static_cast<int32_t>(getInteger(ConfigManager::DUAL_WIELDING_DAMAGE_RATE)), 0, 100);
+	const int64_t maxBoost = 100 - baseRate;
+	return static_cast<int32_t>(std::clamp<int64_t>(boost, 0, maxBoost));
 }
 
 int32_t Player::getDefense() const
@@ -3147,8 +3189,7 @@ ReturnValue Player::queryAdd(int32_t index, const Thing& thing, uint32_t count, 
 						} else {
 							ret = RETURNVALUE_NOERROR;
 						}
-					} else if (type != WEAPON_DISTANCE && type != WEAPON_WAND &&
-					           getBoolean(ConfigManager::ALLOW_DUAL_WIELDING) &&
+					} else if (isDualWieldWeapon(item) && getBoolean(ConfigManager::ALLOW_DUAL_WIELDING) &&
 					           vocation->canDualWield()) {
 						ret = RETURNVALUE_NOERROR;
 					} else {
@@ -3178,8 +3219,7 @@ ReturnValue Player::queryAdd(int32_t index, const Thing& thing, uint32_t count, 
 					           leftType == WEAPON_AMMO || type == WEAPON_SHIELD || type == WEAPON_AMMO ||
 					           type == WEAPON_QUIVER || leftType == WEAPON_QUIVER) {
 						ret = RETURNVALUE_NOERROR;
-					} else if (type != WEAPON_DISTANCE && type != WEAPON_WAND &&
-					           leftType != WEAPON_DISTANCE && leftType != WEAPON_WAND &&
+					} else if (isDualWieldWeapon(item) && isDualWieldWeapon(leftItem) &&
 					           getBoolean(ConfigManager::ALLOW_DUAL_WIELDING) &&
 					           vocation->canDualWield()) {
 						ret = RETURNVALUE_NOERROR;
@@ -3229,8 +3269,7 @@ ReturnValue Player::queryAdd(int32_t index, const Thing& thing, uint32_t count, 
 					           rightType == WEAPON_AMMO || type == WEAPON_SHIELD || type == WEAPON_AMMO ||
 					           type == WEAPON_QUIVER || rightType == WEAPON_QUIVER) {
 						ret = RETURNVALUE_NOERROR;
-					} else if (type != WEAPON_DISTANCE && type != WEAPON_WAND &&
-					           rightType != WEAPON_DISTANCE && rightType != WEAPON_WAND &&
+					} else if (isDualWieldWeapon(item) && isDualWieldWeapon(rightItem) &&
 					           getBoolean(ConfigManager::ALLOW_DUAL_WIELDING) &&
 					           vocation->canDualWield()) {
 						ret = RETURNVALUE_NOERROR;

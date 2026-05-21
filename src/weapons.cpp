@@ -159,7 +159,8 @@ int32_t Weapon::playerWeaponCheck(Player* player, Creature* target, uint8_t shoo
 	int32_t damageModifier = 100;
 
 	if (player->isDualWielding()) {
-		damageModifier = static_cast<int32_t>(getInteger(ConfigManager::DUAL_WIELDING_DAMAGE_RATE));
+		damageModifier = std::clamp<int32_t>(
+		    static_cast<int32_t>(getInteger(ConfigManager::DUAL_WIELDING_DAMAGE_RATE)), 0, 100);
 		damageModifier += player->getDualWieldDamageBoost();
 		if (damageModifier > 100) {
 			damageModifier = 100;
