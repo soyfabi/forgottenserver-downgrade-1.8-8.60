@@ -4487,8 +4487,12 @@ void Game::checkCreatureWalk(uint32_t creatureId)
 void Game::updateCreatureWalk(uint32_t creatureId)
 {
 	Creature* creature = getCreatureByID(creatureId);
-	if (creature && !creature->isRemoved() && !creature->isDead()) {
-		creature->completeEventFollowWalk();
+	if (!creature) {
+		return;
+	}
+
+	creature->completeEventFollowWalk();
+	if (!creature->isRemoved() && !creature->isDead()) {
 		creature->goToFollowCreature();
 	}
 }
