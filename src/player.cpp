@@ -117,6 +117,12 @@ bool isDualWieldWeapon(const Item* item)
 	}
 }
 
+bool isDistanceWeaponWithQuiverPair(const Item* distanceWeapon, const Item* quiver)
+{
+	return distanceWeapon && quiver && distanceWeapon->getWeaponType() == WEAPON_DISTANCE &&
+	       quiver->getWeaponType() == WEAPON_QUIVER;
+}
+
 int64_t getCustomAttributeInteger(const ItemAttributes::CustomAttribute* attr)
 {
 	if (!attr) {
@@ -3256,7 +3262,7 @@ ReturnValue Player::queryAdd(int32_t index, const Thing& thing, uint32_t count, 
 	const int32_t& slotPosition = item->getSlotPosition();
 	if ((slotPosition & SLOTP_HEAD) || (slotPosition & SLOTP_NECKLACE) || (slotPosition & SLOTP_BACKPACK) ||
 	    (slotPosition & SLOTP_ARMOR) || (slotPosition & SLOTP_LEGS) || (slotPosition & SLOTP_FEET) ||
-	    (slotPosition & SLOTP_RING)) {
+	    (slotPosition & SLOTP_RING) || (slotPosition & SLOTP_AMMO)) {
 		ret = RETURNVALUE_CANNOTBEDRESSED;
 	} else if (slotPosition & SLOTP_TWO_HAND) {
 		ret = RETURNVALUE_PUTTHISOBJECTINBOTHHANDS;
@@ -3377,7 +3383,8 @@ ReturnValue Player::queryAdd(int32_t index, const Thing& thing, uint32_t count, 
 						ret = RETURNVALUE_NOERROR;
 					}
 				} else if (slotPosition & SLOTP_TWO_HAND) {
-					if (inventory[CONST_SLOT_RIGHT] && inventory[CONST_SLOT_RIGHT].get() != item) {
+					const Item* rightItem = inventory[CONST_SLOT_RIGHT].get();
+					if (rightItem && rightItem != item && !isDistanceWeaponWithQuiverPair(item, rightItem)) {
 						ret = RETURNVALUE_BOTHHANDSNEEDTOBEFREE;
 					} else {
 						ret = RETURNVALUE_NOERROR;
